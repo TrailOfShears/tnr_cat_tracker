@@ -1375,7 +1375,7 @@ function openDetailModal(catId) {
   if(cat.colony) statusTags += `<span class="tag colony">${esc(cat.colony)}</span>`;
 
   document.getElementById('detail-content').innerHTML = `
-    <div class="modal-handle"></div>
+    <div class="modal-handle" onclick="closeDetailModal()"></div>
     ${photoHtml}
     <div class="modal-title">${esc(cat.name)}</div>
     <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:10px">${esc(meta)}</div>
@@ -1395,6 +1395,10 @@ function openDetailModal(catId) {
 
 function closeDetailModal() { document.getElementById('detail-modal').classList.remove('open'); }
 function closeDetailIfOutside(e) { if(e.target === document.getElementById('detail-modal')) closeDetailModal(); }
+
+function openHelp() { document.getElementById('help-modal').classList.add('open'); }
+function closeHelp() { document.getElementById('help-modal').classList.remove('open'); }
+function closeHelpIfOutside(e) { if(e.target === document.getElementById('help-modal')) closeHelp(); }
 
 function startNewObsForCat(catId) {
   closeDetailModal();

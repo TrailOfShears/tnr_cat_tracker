@@ -14,7 +14,10 @@
 
 <header>
   <div class="logo">🐱 <span>TNR</span>TRACK</div>
-  <div class="colony-badge" id="active-colony-badge" onclick="openColonyPicker()">NO COLONY</div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <button onclick="openHelp()" style="background:none;border:1.5px solid var(--border);color:var(--muted);border-radius:50%;width:28px;height:28px;font-size:0.85rem;font-weight:800;cursor:pointer;font-family:var(--font);display:flex;align-items:center;justify-content:center;flex-shrink:0">?</button>
+    <div class="colony-badge" id="active-colony-badge" onclick="openColonyPicker()">NO COLONY</div>
+  </div>
 </header>
 
 <div class="tabs">
@@ -414,6 +417,47 @@
       <button class="btn btn-outline" onclick="closeEditProfile()">Cancel</button>
       <button class="btn btn-danger" onclick="deleteFromEditProfile()">🗑 Delete</button>
     </div>
+  </div>
+</div>
+
+<!-- ═══════════ HELP MODAL ═══════════ -->
+<div class="modal-overlay" id="help-modal" onclick="closeHelpIfOutside(event)">
+  <div class="modal">
+    <div class="modal-handle" onclick="closeHelp()"></div>
+    <div class="modal-title">📖 How to Use TNRTrack</div>
+
+    <div style="font-size:0.82rem;line-height:1.65">
+
+      <div class="section-label" style="margin-top:0">Getting Started</div>
+      <p style="margin-bottom:8px">1. Open <strong>⚙ Settings</strong> → tap <strong>+ New Colony</strong> to create your first colony.</p>
+      <p style="margin-bottom:16px">2. Tap the colony badge in the top bar to switch between colonies.</p>
+
+      <div class="section-label">+ Log Cat Tab</div>
+      <p style="margin-bottom:8px">Fill in the cat's identity and observation details, then tap <strong>Save</strong>.</p>
+      <p style="margin-bottom:8px">Tap <strong>Link to known cat</strong> to attach the observation to an existing cat. Identity fields are pre-filled and locked.</p>
+      <p style="margin-bottom:16px">When a cat is linked, all fields except location, notes, and photo are pre-filled from their last observation.</p>
+
+      <div class="section-label">🐾 Cats Tab</div>
+      <p style="margin-bottom:8px">Shows all cats in the active colony, grouped by owner type.</p>
+      <p style="margin-bottom:16px">Tap a colony bar to expand it and see its cats. Tap a cat's card to open its full profile.</p>
+
+      <div class="section-label">Cat Detail</div>
+      <ul style="padding-left:16px;margin-bottom:16px">
+        <li style="margin-bottom:4px"><strong>➕ New</strong> — start a new observation pre-filled with this cat's last data</li>
+        <li style="margin-bottom:4px"><strong>✏️ Edit</strong> — update the cat's profile and photo</li>
+        <li style="margin-bottom:4px"><strong>🗑 Delete</strong> — permanently remove this cat and all observations</li>
+      </ul>
+
+      <div class="section-label">Tips</div>
+      <ul style="padding-left:16px;margin-bottom:8px">
+        <li style="margin-bottom:4px">Tap the <strong>gray handle bar</strong> at the top of any sheet to close it.</li>
+        <li style="margin-bottom:4px">The <strong>Owner</strong> field defaults to Feral — tap it to pick from past entries or type a custom name.</li>
+        <li style="margin-bottom:4px">GPS coordinates are captured automatically if location access is granted.</li>
+        <li style="margin-bottom:4px">Use <strong>⚙ Settings → Export JSON</strong> to back up all your data.</li>
+      </ul>
+    </div>
+
+    <button class="btn btn-outline" style="width:100%;margin-top:16px" onclick="closeHelp()">✕ Close</button>
   </div>
 </div>
 
