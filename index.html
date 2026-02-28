@@ -91,8 +91,16 @@
       </div>
       <input type="hidden" id="f-age">
     </div>
-    <div class="field" style="margin-bottom:0"><label>Bio / Notes <span style="font-weight:400;color:var(--muted)">(saved to cat profile)</span></label>
+    <div class="field"><label>Bio / Notes <span style="font-weight:400;color:var(--muted)">(saved to cat profile)</span></label>
       <textarea id="f-bio" rows="2" placeholder="Markings, personality, feeding habits…"></textarea>
+    </div>
+    <div class="field" style="margin-bottom:0"><label>Owner</label>
+      <div class="pill-group" id="pg-owner" style="grid-template-columns:repeat(3,1fr)">
+        <div class="pill active" data-val="Feral">Feral</div>
+        <div class="pill" data-val="Community">Community</div>
+        <div class="pill" data-val="Owned">Owned</div>
+      </div>
+      <input type="hidden" id="f-owner" value="Feral">
     </div>
   </div>
 
@@ -385,8 +393,17 @@
       <input type="hidden" id="ep-age">
     </div>
 
-    <div class="field" style="margin-bottom:20px"><label>Bio / Notes</label>
+    <div class="field"><label>Bio / Notes</label>
       <textarea id="ep-bio" rows="3" placeholder="Markings, personality, feeding notes…" style="width:100%;box-sizing:border-box;background:var(--surface2);color:var(--fg);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:0.85rem;resize:vertical"></textarea>
+    </div>
+
+    <div class="field" style="margin-bottom:20px"><label>Owner</label>
+      <div class="pill-group" id="ep-pg-owner" style="grid-template-columns:repeat(3,1fr)">
+        <div class="pill active" data-val="Feral">Feral</div>
+        <div class="pill" data-val="Community">Community</div>
+        <div class="pill" data-val="Owned">Owned</div>
+      </div>
+      <input type="hidden" id="ep-owner" value="Feral">
     </div>
 
     <div class="ep-btn-row">

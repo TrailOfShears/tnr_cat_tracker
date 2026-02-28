@@ -760,6 +760,7 @@ function setupPillListeners() {
     'pg-color': 'f-color',
     'pg-sex': 'f-sex',
     'pg-age': 'f-age',
+    'pg-owner': 'f-owner',
     'pg-bcs': 'f-bcs',
     'pg-fixed': 'f-fixed',
     'pg-trap': 'f-trap',
@@ -787,7 +788,7 @@ function setupPillListeners() {
   });
 
   // Edit-profile modal pill listeners
-  const epGroups = { 'ep-pg-color': 'ep-color', 'ep-pg-sex': 'ep-sex', 'ep-pg-age': 'ep-age' };
+  const epGroups = { 'ep-pg-color': 'ep-color', 'ep-pg-sex': 'ep-sex', 'ep-pg-age': 'ep-age', 'ep-pg-owner': 'ep-owner' };
   Object.entries(epGroups).forEach(([groupId, fieldId]) => {
     document.getElementById(groupId).addEventListener('click', e => {
       const pill = e.target.closest('.pill');
@@ -872,6 +873,7 @@ function linkCat(catId) {
   setPillValue('pg-color', cat.color);
   setPillValue('pg-sex', cat.sex); document.getElementById('f-sex').value = cat.sex || '';
   setPillValue('pg-age', cat.age); document.getElementById('f-age').value = cat.age || '';
+  setPillValue('pg-owner', cat.owner || 'Feral'); document.getElementById('f-owner').value = cat.owner || 'Feral';
 
   const photo = loadPhotoCat(catId);
   currentPrimaryPhoto = photo;
@@ -881,6 +883,21 @@ function linkCat(catId) {
   updateCatLinkBar(cat);
   filterTrapPills(catId);
   onFormColonyChange();
+
+  // Pre-fill observation fields from most recent sighting
+  const last = latestObs(catId);
+  if(last) {
+    setPillValue('pg-bcs', last.bcs); document.getElementById('f-bcs').value = last.bcs || '';
+    const fixedVal = last.fixed || (last.neutered === 'Yes' || last.eartip === 'Yes' ? 'Yes' : '');
+    setPillValue('pg-fixed', fixedVal); document.getElementById('f-fixed').value = fixedVal;
+    setPillValue('pg-trap', last.trap); document.getElementById('f-trap').value = last.trap || '';
+    if(last.health) {
+      healthSelections.clear();
+      setMultiPillValues('pg-health', last.health);
+      document.getElementById('f-health').value = last.health;
+    }
+  }
+
   showToast(`✓ Linked to ${cat.name}`);
 }
 
@@ -1017,6 +1034,7 @@ function saveObservation() {
         sex: document.getElementById('f-sex').value,
         age: document.getElementById('f-age').value,
         bio: document.getElementById('f-bio').value.trim(),
+        owner: document.getElementById('f-owner').value || 'Feral',
       };
       cats.push(newCat);
       saveCats();
@@ -1032,6 +1050,8 @@ function saveObservation() {
       cat.age = document.getElementById('f-age').value;
       const bioDraft = document.getElementById('f-bio').value.trim();
       if(bioDraft) cat.bio = bioDraft;
+      const ownerDraft = document.getElementById('f-owner').value;
+      if(ownerDraft) cat.owner = ownerDraft;
       saveCats();
     }
   }
@@ -1110,6 +1130,7 @@ function editObservation(obsId) {
   setPillValue('pg-color', cat.color);
   setPillValue('pg-sex', cat.sex); document.getElementById('f-sex').value = cat.sex || '';
   setPillValue('pg-age', cat.age); document.getElementById('f-age').value = cat.age || '';
+  setPillValue('pg-owner', cat.owner || 'Feral'); document.getElementById('f-owner').value = cat.owner || 'Feral';
   lockIdentitySection(true);
   updateCatLinkBar(cat);
   filterTrapPills(cat.id);
@@ -1185,6 +1206,10 @@ function clearForm() {
 
   // Clear all pill selections
   document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+
+  // Reset owner to default Feral
+  document.getElementById('f-owner').value = 'Feral';
+  setPillValue('pg-owner', 'Feral');
 
   unlinkCat();
   renderPrimaryPhotoRow();
@@ -1334,6 +1359,7 @@ function openDetailModal(catId) {
   let statusTags = '';
   if(status.fixed === 'Yes') statusTags += `<span class="tag neutered">✓ FIXED</span>`;
   else if(status.fixed === 'No') statusTags += `<span class="tag not-neutered">✗ NOT FIXED</span>`;
+  statusTags += `<span class="tag">${esc(cat.owner || 'Feral')}</span>`;
   if(cat.colony) statusTags += `<span class="tag colony">${esc(cat.colony)}</span>`;
 
   document.getElementById('detail-content').innerHTML = `
@@ -1343,10 +1369,10 @@ function openDetailModal(catId) {
     <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:10px">${esc(meta)}</div>
     <div class="cat-tags" style="margin-bottom:16px">${statusTags}</div>
     ${cat.bio ? `<div style="font-size:0.8rem;color:var(--fg);margin-bottom:16px;line-height:1.5;white-space:pre-wrap">${esc(cat.bio)}</div>` : ''}
-    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-      <button class="btn-sm" onclick="startNewObsForCat('${catId}')">+ New Sighting</button>
-      <button class="btn-sm" style="border-color:var(--purple);color:var(--purple-light)" onclick="openEditProfile('${catId}')">✏️ Edit Profile</button>
-      <button class="btn-sm btn-danger" onclick="deleteCat('${catId}')">🗑 Delete Cat</button>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button class="btn-sm" style="flex:1" onclick="startNewObsForCat('${catId}')">+ New Sighting</button>
+      <button class="btn-sm" style="flex:1;border-color:var(--purple);color:var(--purple-light)" onclick="openEditProfile('${catId}')">✏️ Edit Profile</button>
+      <button class="btn-sm btn-danger" style="flex:1" onclick="deleteCat('${catId}')">🗑 Delete Cat</button>
     </div>
     <div class="section-label">Observation History (${obs.length})</div>
     <div class="obs-timeline">${obsHtml}</div>
@@ -1390,12 +1416,14 @@ function openEditProfile(catId) {
   document.getElementById('ep-bio').value = cat.bio || '';
 
   // Set pills
-  ['ep-pg-color','ep-pg-sex','ep-pg-age'].forEach(pgId => {
+  ['ep-pg-color','ep-pg-sex','ep-pg-age','ep-pg-owner'].forEach(pgId => {
     document.getElementById(pgId).querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
   });
   epSetPill('ep-pg-color', cat.color);
   epSetPill('ep-pg-sex', cat.sex);
   epSetPill('ep-pg-age', cat.age);
+  document.getElementById('ep-owner').value = cat.owner || 'Feral';
+  epSetPill('ep-pg-owner', cat.owner || 'Feral');
 
   // Load existing photo
   epPhoto = loadPhotoCat(catId);
@@ -1449,6 +1477,7 @@ function saveEditProfile() {
   cat.sex    = document.getElementById('ep-sex').value;
   cat.age    = document.getElementById('ep-age').value;
   cat.bio    = document.getElementById('ep-bio').value.trim();
+  cat.owner  = document.getElementById('ep-owner').value || 'Feral';
 
   saveCats();
   if(epPhoto) savePhotoCat(cat.id, epPhoto);
@@ -1547,7 +1576,7 @@ function renderColonies() {
     const colonyCats = cats.filter(c => c.colony === col.name);
     const fixed = colonyCats.filter(c => derivedStatus(c.id).fixed === 'Yes').length;
     const mapIcon = col.bounds ? '🗺 Map Set ✓' : '🗺 Set Territory';
-    const catMinis = colonyCats.map(cat => {
+    const buildMini = cat => {
       const photo = loadPhotoCat(cat.id);
       const thumb = photo
         ? `<img src="${photo}" class="colony-cat-thumb">`
@@ -1563,6 +1592,13 @@ function renderColonies() {
           <div class="colony-cat-mini-sub">${lastSeen} ${fixedTag}</div>
         </div>
       </div>`;
+    };
+    const ownerOrder = ['Feral', 'Community', 'Owned'];
+    const catMinis = ownerOrder.map(ownerLabel => {
+      const group = colonyCats.filter(c => (c.owner || 'Feral') === ownerLabel);
+      if(!group.length) return '';
+      return `<div style="font-size:0.6rem;font-family:var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:0.07em;margin:8px 0 4px">${ownerLabel}</div>`
+        + group.map(buildMini).join('');
     }).join('');
     return `<div class="colony-card">
       <div class="colony-card-top" onclick="toggleColony(${idx})" style="cursor:pointer">
