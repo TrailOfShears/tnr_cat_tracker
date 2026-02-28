@@ -13,6 +13,7 @@ let editingObsId = null;
 const healthSelections = new Set();
 let currentFilter = '';
 let currentSearch = '';
+let relationships  = [];
 
 let colonyTileMap = null;
 let logTileMap = null;
@@ -27,6 +28,9 @@ db.version(1).stores({
   observations: 'id, cat_id',
   colonies:     'id',
   photos:       'key'
+});
+db.version(2).stores({
+  relationships: '++id, catAId, catBId'
 });
 
 // In-memory photo cache — keeps render functions synchronous
@@ -75,11 +79,12 @@ function loadPhotosObs(id) {
 function deletePhotosObs(id) { savePhotosObs(id, []); }
 
 async function loadAll() {
-  const [dbCats, dbObs, dbColonies, dbPhotos] = await Promise.all([
+  const [dbCats, dbObs, dbColonies, dbPhotos, dbRels] = await Promise.all([
     db.cats.toArray(),
     db.observations.toArray(),
     db.colonies.toArray(),
-    db.photos.toArray()
+    db.photos.toArray(),
+    db.relationships.toArray()
   ]);
 
   // One-time migration from localStorage if IndexedDB is empty
@@ -91,6 +96,7 @@ async function loadAll() {
   cats = dbCats;
   observations = dbObs;
   colonies = dbColonies;
+  relationships = dbRels;
 
   // Pre-populate photo cache for synchronous render access
   photoCache.clear();
@@ -1247,14 +1253,15 @@ function clearForm() {
 // ══════════════════════════════════════════════════════════════════
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((el, i) => {
-    el.classList.toggle('active', ['log','cats','colonies','stats'][i] === tab);
+    el.classList.toggle('active', ['log','cats','social','colonies','stats'][i] === tab);
   });
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
   document.getElementById('view-' + tab).classList.add('active');
 
-  if(tab === 'cats') renderCats(currentSearch, currentFilter);
+  if(tab === 'cats')     renderCats(currentSearch, currentFilter);
   if(tab === 'colonies') renderColonies();
-  if(tab === 'stats') renderStats();
+  if(tab === 'stats')    renderStats();
+  if(tab === 'social')   renderSocialGraph();
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1321,6 +1328,38 @@ function renderCats(search, filter) {
 // ══════════════════════════════════════════════════════════════════
 // CAT DETAIL MODAL
 // ══════════════════════════════════════════════════════════════════
+function buildRelSection(catId) {
+  const rels = getRelationshipsForCat(catId);
+  const typeStyle = {
+    Friend: 'background:#3fcf6e22;color:#3fcf6e;border-color:#3fcf6e',
+    Enemy:  'background:#e05c5c22;color:#e05c5c;border-color:#e05c5c',
+    Lover:  'background:#c084fc22;color:#c084fc;border-color:#c084fc'
+  };
+  const relRows = rels.map(r => {
+    const other = getCatById(r.otherId);
+    if(!other) return '';
+    const photo = loadPhotoCat(r.otherId);
+    const thumb = photo
+      ? `<img src="${photo}" class="rel-thumb">`
+      : `<div class="rel-thumb rel-thumb-empty">🐱</div>`;
+    return `<div class="rel-row" onclick="openDetailModal('${r.otherId}')">
+      ${thumb}
+      <div class="rel-name">${esc(other.name)}</div>
+      <span class="rel-badge" style="${typeStyle[r.type]||''}"
+            onclick="event.stopPropagation();openRelationPicker('${catId}','${r.otherId}')">${r.type}</span>
+    </div>`;
+  }).join('');
+
+  return `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div class="section-label" style="margin:0">Social</div>
+      <button class="btn-sm" style="padding:4px 10px;font-size:0.7rem"
+              onclick="openRelationPicker('${catId}')">➕ Add Relation</button>
+    </div>
+    ${relRows || '<div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);padding:4px 0 12px">No relationships recorded.</div>'}
+  `;
+}
+
 function openDetailModal(catId) {
   const cat = getCatById(catId);
   if(!cat) return;
@@ -1386,6 +1425,7 @@ function openDetailModal(catId) {
       <button class="btn-sm" style="flex:1;border-color:var(--purple);color:var(--purple-light)" onclick="openEditProfile('${catId}')">✏️ Edit</button>
       <button class="btn-sm btn-danger" style="flex:1" onclick="deleteCat('${catId}')">🗑 Delete</button>
     </div>
+    ${buildRelSection(catId)}
     <div class="section-label">Observation History (${obs.length})</div>
     <div class="obs-timeline">${obsHtml}</div>
   `;
@@ -1399,6 +1439,131 @@ function closeDetailIfOutside(e) { if(e.target === document.getElementById('deta
 function openHelp() { document.getElementById('help-modal').classList.add('open'); }
 function closeHelp() { document.getElementById('help-modal').classList.remove('open'); }
 function closeHelpIfOutside(e) { if(e.target === document.getElementById('help-modal')) closeHelp(); }
+
+// ══════════════════════════════════════════════════════════════════
+// RELATIONSHIPS
+// ══════════════════════════════════════════════════════════════════
+function normalizeRel(aId, bId) {
+  return aId < bId ? [aId, bId] : [bId, aId];
+}
+
+function getRelationshipsForCat(catId) {
+  return relationships
+    .filter(r => r.catAId === catId || r.catBId === catId)
+    .map(r => ({ otherId: r.catAId === catId ? r.catBId : r.catAId, type: r.type }));
+}
+
+async function upsertRelationship(aId, bId, type) {
+  const [catAId, catBId] = normalizeRel(aId, bId);
+  const existing = relationships.find(r => r.catAId === catAId && r.catBId === catBId);
+  if(existing) {
+    existing.type = type;
+    await db.relationships.put(existing);
+  } else {
+    const rec = { catAId, catBId, type };
+    const id = await db.relationships.add(rec);
+    rec.id = id;
+    relationships.push(rec);
+  }
+}
+
+async function deleteRelationship(aId, bId) {
+  const [catAId, catBId] = normalizeRel(aId, bId);
+  const existing = relationships.find(r => r.catAId === catAId && r.catBId === catBId);
+  if(existing) {
+    relationships = relationships.filter(r => r !== existing);
+    await db.relationships.delete(existing.id);
+  }
+}
+
+// ── Relation picker ─────────────────────────────────────────────
+let relPickerFromId   = null;
+let relPickerTargetId = null;
+
+function openRelationPicker(fromCatId, preTargetId) {
+  relPickerFromId = fromCatId;
+  _renderRelPickerList();
+  document.getElementById('relation-picker-modal').classList.add('open');
+  if(preTargetId) {
+    _selectRelTarget(preTargetId);
+  } else {
+    document.getElementById('rel-picker-step1').style.display = 'block';
+    document.getElementById('rel-picker-step2').style.display = 'none';
+    document.getElementById('rel-picker-title').textContent = 'Add Relationship';
+  }
+}
+
+function _renderRelPickerList() {
+  const fromCat  = getCatById(relPickerFromId);
+  const colony   = fromCat ? fromCat.colony : activeColony;
+  const others   = cats.filter(c => c.id !== relPickerFromId);
+  others.sort((a, b) => {
+    const ac = a.colony === colony ? 0 : 1, bc = b.colony === colony ? 0 : 1;
+    return ac - bc || a.name.localeCompare(b.name);
+  });
+  const relMap = new Map(getRelationshipsForCat(relPickerFromId).map(r => [r.otherId, r.type]));
+  const relCols = { Friend:'#3fcf6e', Enemy:'#e05c5c', Lover:'#c084fc' };
+
+  const html = others.map(c => {
+    const photo = loadPhotoCat(c.id);
+    const thumb = photo
+      ? `<img src="${photo}" class="rel-thumb">`
+      : `<div class="rel-thumb rel-thumb-empty">🐱</div>`;
+    const t = relMap.get(c.id);
+    const badge = t ? `<span style="font-size:0.6rem;font-family:var(--mono);padding:2px 6px;border-radius:3px;border:1px solid ${relCols[t]};color:${relCols[t]}">${t}</span>` : '';
+    const col   = c.colony ? `<span style="font-family:var(--mono);font-size:0.58rem;color:var(--muted)">${esc(c.colony)}</span>` : '';
+    return `<div class="rel-picker-cat-row" onclick="_selectRelTarget('${c.id}')">
+      ${thumb}
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:0.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.name)}</div>
+        <div>${col}</div>
+      </div>
+      ${badge}
+    </div>`;
+  }).join('');
+
+  document.getElementById('rel-picker-cat-list').innerHTML = html ||
+    '<div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);padding:16px 0">No other cats recorded.</div>';
+}
+
+function _selectRelTarget(targetCatId) {
+  relPickerTargetId = targetCatId;
+  const cat      = getCatById(targetCatId);
+  if(!cat) return;
+  const existing = getRelationshipsForCat(relPickerFromId).find(r => r.otherId === targetCatId);
+  document.getElementById('rel-picker-title').textContent = existing ? 'Edit Relationship' : 'Add Relationship';
+  const photo = loadPhotoCat(targetCatId);
+  document.getElementById('rel-picker-target-thumb').innerHTML = photo
+    ? `<img src="${photo}" class="rel-thumb">`
+    : `<div class="rel-thumb rel-thumb-empty">🐱</div>`;
+  document.getElementById('rel-picker-target-name').textContent   = cat.name;
+  document.getElementById('rel-picker-target-colony').textContent = cat.colony || 'No colony';
+  document.getElementById('rel-remove-btn').style.display = existing ? 'block' : 'none';
+  document.getElementById('rel-picker-step1').style.display = 'none';
+  document.getElementById('rel-picker-step2').style.display = 'block';
+}
+
+function backToRelList() {
+  relPickerTargetId = null;
+  document.getElementById('rel-picker-step1').style.display = 'block';
+  document.getElementById('rel-picker-step2').style.display = 'none';
+  document.getElementById('rel-picker-title').textContent = 'Add Relationship';
+}
+
+async function saveRelationType(type) {
+  if(!relPickerFromId || !relPickerTargetId) return;
+  if(type === 'Remove') {
+    await deleteRelationship(relPickerFromId, relPickerTargetId);
+  } else {
+    await upsertRelationship(relPickerFromId, relPickerTargetId, type);
+  }
+  const fromId = relPickerFromId;
+  closeRelationPicker();
+  openDetailModal(fromId);
+}
+
+function closeRelationPicker() { document.getElementById('relation-picker-modal').classList.remove('open'); }
+function closeRelPickerIfOutside(e) { if(e.target === document.getElementById('relation-picker-modal')) closeRelationPicker(); }
 
 function startNewObsForCat(catId) {
   closeDetailModal();
@@ -1541,6 +1706,10 @@ function deleteCat(catId) {
   deletePhotoCat(catId);
   observations = observations.filter(o => o.cat_id !== catId);
   cats = cats.filter(c => c.id !== catId);
+  // Clean up relationships
+  const relIds = relationships.filter(r => r.catAId === catId || r.catBId === catId).map(r => r.id);
+  relationships = relationships.filter(r => r.catAId !== catId && r.catBId !== catId);
+  if(relIds.length) db.relationships.bulkDelete(relIds);
   saveCats();
   saveObs();
   closeDetailModal();
@@ -1969,9 +2138,10 @@ function clearAll() {
   db.observations.clear();
   db.colonies.clear();
   db.photos.clear();
+  db.relationships.clear();
   photoCache.clear();
 
-  cats = []; observations = []; colonies = [];
+  cats = []; observations = []; colonies = []; relationships = [];
   activeColony = '';
   renderCats(); renderColonies(); renderStats();
   updateColonyBadge();
@@ -1997,6 +2167,165 @@ function showToast(msg) {
   t.classList.add('show');
   if(toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// SOCIAL GRAPH
+// ══════════════════════════════════════════════════════════════════
+let d3Loaded = false;
+
+function loadD3(cb) {
+  if(d3Loaded) { cb(); return; }
+  const s = document.createElement('script');
+  s.src = 'https://unpkg.com/d3@7/dist/d3.min.js';
+  s.onload = () => { d3Loaded = true; cb(); };
+  document.head.appendChild(s);
+}
+
+function renderSocialGraph() {
+  const wrap   = document.getElementById('social-graph-wrap');
+  const empty  = document.getElementById('social-graph-empty');
+  const noRels = document.getElementById('social-no-rels');
+  const legend = document.getElementById('social-legend');
+  if(!wrap) return;
+
+  const showAll   = document.getElementById('social-all-colonies') &&
+                    document.getElementById('social-all-colonies').checked;
+  const graphCats = (showAll || !activeColony)
+    ? cats
+    : cats.filter(c => c.colony === activeColony);
+
+  if(!graphCats.length) {
+    wrap.innerHTML = '';
+    empty.style.display  = 'block';
+    noRels.style.display = 'none';
+    legend.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+
+  const catIds   = new Set(graphCats.map(c => c.id));
+  const graphRels = relationships.filter(r => catIds.has(r.catAId) && catIds.has(r.catBId));
+
+  noRels.style.display = graphRels.length ? 'none' : 'block';
+  legend.style.display = graphRels.length ? 'block' : 'none';
+
+  wrap.innerHTML = '<div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);padding:24px;text-align:center">Loading graph…</div>';
+  loadD3(() => {
+    wrap.innerHTML = '';
+    _drawD3Graph(wrap, graphCats, graphRels);
+  });
+}
+
+function _drawD3Graph(container, graphCats, graphRels) {
+  const W = container.clientWidth || 340;
+  const H = Math.min(W * 1.3, 540);
+
+  const svg = d3.select(container).append('svg')
+    .attr('width', W).attr('height', H)
+    .attr('viewBox', `0 0 ${W} ${H}`)
+    .style('touch-action', 'none')
+    .style('border-radius', '12px')
+    .style('background', 'var(--surface)');
+
+  const g = svg.append('g');
+  svg.call(d3.zoom().scaleExtent([0.25, 5]).on('zoom', e => g.attr('transform', e.transform)));
+
+  const defs  = svg.append('defs');
+  const nodes = graphCats.map(c => ({ id: c.id, name: c.name, photo: loadPhotoCat(c.id) }));
+  nodes.forEach(n => {
+    defs.append('clipPath').attr('id', `rclip-${n.id}`)
+      .append('circle').attr('r', 20).attr('cx', 0).attr('cy', 0);
+  });
+
+  // All links (forceLink resolves source/target string → node ref)
+  const allLinks = graphRels.map(r => ({ source: r.catAId, target: r.catBId, type: r.type }));
+
+  const linkForce = d3.forceLink(allLinks)
+    .id(d => d.id)
+    .distance(d => d.type === 'Lover' ? 80 : d.type === 'Friend' ? 110 : 200)
+    .strength(d => d.type === 'Enemy' ? 0 : d.type === 'Lover' ? 0.85 : 0.7);
+
+  const simulation = d3.forceSimulation(nodes)
+    .force('link',      linkForce)
+    .force('charge',    d3.forceManyBody().strength(-200))
+    .force('center',    d3.forceCenter(W / 2, H / 2))
+    .force('collision', d3.forceCollide(48));
+
+  // Enemy repulsion custom force (runs after forceLink resolves refs)
+  simulation.force('enemy-repel', alpha => {
+    allLinks.filter(l => l.type === 'Enemy').forEach(l => {
+      const s = l.source, t = l.target;
+      if(!s || !t || s.x == null) return;
+      const dx = (t.x - s.x) || 0.01, dy = (t.y - s.y) || 0.01;
+      const d  = Math.sqrt(dx * dx + dy * dy);
+      const threshold = 250;
+      if(d < threshold) {
+        const k = alpha * 3 * (threshold - d) / threshold;
+        s.vx -= dx / d * k;  s.vy -= dy / d * k;
+        t.vx += dx / d * k;  t.vy += dy / d * k;
+      }
+    });
+  });
+
+  const linkColors = { Friend: '#3fcf6e', Enemy: '#e05c5c', Lover: '#c084fc' };
+
+  // Draw edges
+  const linkEls = g.append('g').selectAll('line')
+    .data(allLinks).enter().append('line')
+    .attr('stroke', d => linkColors[d.type])
+    .attr('stroke-width', 2.5)
+    .attr('stroke-opacity', 0.75)
+    .attr('stroke-dasharray', d => d.type === 'Enemy' ? '7 4' : null);
+
+  // ♥ on lover edges
+  const loverLinks = allLinks.filter(l => l.type === 'Lover');
+  const heartEls = g.append('g').selectAll('text')
+    .data(loverLinks).enter().append('text')
+    .attr('text-anchor', 'middle').attr('dominant-baseline', 'middle')
+    .attr('font-size', '14px').attr('fill', '#c084fc')
+    .attr('pointer-events', 'none').text('♥');
+
+  // Draw nodes
+  const nodeEls = g.append('g').selectAll('g')
+    .data(nodes).enter().append('g')
+    .style('cursor', 'pointer')
+    .on('click', (e, d) => { e.stopPropagation(); openDetailModal(d.id); })
+    .call(d3.drag()
+      .on('start', (e, d) => { if(!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag',  (e, d) => { d.fx = e.x; d.fy = e.y; })
+      .on('end',   (e, d) => { if(!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
+    );
+
+  nodeEls.append('circle').attr('r', 22)
+    .attr('fill', 'var(--surface2)').attr('stroke', 'var(--border)').attr('stroke-width', 2);
+
+  nodes.forEach(n => {
+    const el = nodeEls.filter(d => d.id === n.id);
+    if(n.photo) {
+      el.append('image').attr('href', n.photo)
+        .attr('x', -20).attr('y', -20).attr('width', 40).attr('height', 40)
+        .attr('clip-path', `url(#rclip-${n.id})`);
+    } else {
+      el.append('text').attr('text-anchor', 'middle').attr('dominant-baseline', 'middle')
+        .attr('font-size', '18px').attr('pointer-events', 'none').text('🐱');
+    }
+  });
+
+  nodeEls.append('text').attr('y', 32).attr('text-anchor', 'middle')
+    .attr('font-family', 'var(--font)').attr('font-size', '10px').attr('font-weight', '700')
+    .attr('fill', 'var(--text)').attr('pointer-events', 'none')
+    .text(d => d.name.length > 10 ? d.name.slice(0, 9) + '…' : d.name);
+
+  simulation.on('tick', () => {
+    linkEls
+      .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    heartEls
+      .attr('x', d => (d.source.x + d.target.x) / 2)
+      .attr('y', d => (d.source.y + d.target.y) / 2);
+    nodeEls.attr('transform', d => `translate(${d.x},${d.y})`);
+  });
 }
 
 // ══════════════════════════════════════════════════════════════════

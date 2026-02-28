@@ -23,6 +23,7 @@
 <div class="tabs">
   <div class="tab active" onclick="switchTab('log')">+ LOG CAT</div>
   <div class="tab" onclick="switchTab('cats')">CATS</div>
+  <div class="tab" onclick="switchTab('social')">🕸 SOCIAL</div>
   <div class="tab" onclick="switchTab('colonies')">COLONIES</div>
   <div class="tab" onclick="switchTab('stats')">STATS</div>
 </div>
@@ -254,6 +255,38 @@
   <div id="colonies-list"></div>
 </div>
 
+<!-- ═══════════ SOCIAL VIEW ═══════════ -->
+<div class="view" id="view-social">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+    <div class="section-label" style="margin:0;flex:1">SOCIAL GRAPH</div>
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.68rem;font-family:var(--mono);color:var(--muted)">
+      <input type="checkbox" id="social-all-colonies" onchange="renderSocialGraph()"> ALL COLONIES
+    </label>
+  </div>
+  <div style="font-family:var(--mono);font-size:0.62rem;color:var(--muted);margin-bottom:14px">
+    Tap a cat to open profile · Drag to rearrange · Pinch to zoom
+  </div>
+  <div id="social-graph-wrap"></div>
+  <div id="social-graph-empty" style="display:none">
+    <div class="empty-state">
+      <div class="empty-icon">🕸</div>
+      <div class="empty-title">No cats to show</div>
+      <div class="empty-sub">Select a colony above, or enable All Colonies</div>
+    </div>
+  </div>
+  <div id="social-no-rels" style="display:none;font-family:var(--mono);font-size:0.68rem;color:var(--muted);text-align:center;padding:14px 0">
+    No relationships yet — open a cat's profile and tap ➕ Add Relation.
+  </div>
+  <div id="social-legend" style="display:none;margin-top:14px">
+    <div class="section-label">Legend</div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:0.72rem">
+      <div style="display:flex;align-items:center;gap:7px"><span style="display:inline-block;width:22px;height:2.5px;background:#3fcf6e;border-radius:2px"></span>Friend</div>
+      <div style="display:flex;align-items:center;gap:7px"><span style="display:inline-block;width:22px;height:0;border-top:2.5px dashed #e05c5c"></span>Enemy</div>
+      <div style="display:flex;align-items:center;gap:7px"><span style="color:#c084fc;font-size:1rem">♥</span>Lover</div>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════ STATS VIEW ═══════════ -->
 <div class="view" id="view-stats">
   <div class="section-label">Summary</div>
@@ -416,6 +449,46 @@
       <button class="btn btn-primary" onclick="saveEditProfile()">💾 Save</button>
       <button class="btn btn-outline" onclick="closeEditProfile()">Cancel</button>
       <button class="btn btn-danger" onclick="deleteFromEditProfile()">🗑 Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ RELATION PICKER MODAL ═══════════ -->
+<div class="modal-overlay" id="relation-picker-modal" onclick="closeRelPickerIfOutside(event)">
+  <div class="modal">
+    <div class="modal-handle" onclick="closeRelationPicker()"></div>
+    <div class="modal-title" id="rel-picker-title">Add Relationship</div>
+
+    <!-- Step 1: Cat list -->
+    <div id="rel-picker-step1">
+      <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:12px">
+        Tap a cat to select them
+      </div>
+      <div id="rel-picker-cat-list"></div>
+      <button class="btn btn-outline" style="margin-top:16px;width:100%" onclick="closeRelationPicker()">Cancel</button>
+    </div>
+
+    <!-- Step 2: Choose type -->
+    <div id="rel-picker-step2" style="display:none">
+      <div id="rel-picker-target-info" style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:10px 12px;background:var(--surface2);border-radius:10px;border:1.5px solid var(--border)">
+        <div id="rel-picker-target-thumb"></div>
+        <div>
+          <div id="rel-picker-target-name" style="font-weight:700;font-size:0.9rem"></div>
+          <div id="rel-picker-target-colony" style="font-family:var(--mono);font-size:0.6rem;color:var(--muted)"></div>
+        </div>
+      </div>
+      <div class="section-label" style="margin-top:0">Relationship Type</div>
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button class="rel-type-btn" onclick="saveRelationType('Friend')">💚 Friend</button>
+        <button class="rel-type-btn" onclick="saveRelationType('Enemy')">💢 Enemy</button>
+        <button class="rel-type-btn" onclick="saveRelationType('Lover')">💜 Lover</button>
+      </div>
+      <button class="btn btn-outline" id="rel-remove-btn"
+              onclick="saveRelationType('Remove')"
+              style="width:100%;margin-bottom:10px;border-color:var(--accent2);color:var(--accent2)">
+        🗑 Remove Relationship
+      </button>
+      <button class="btn btn-outline" onclick="backToRelList()" style="width:100%">↩ Back</button>
     </div>
   </div>
 </div>
