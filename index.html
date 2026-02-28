@@ -95,12 +95,14 @@
       <textarea id="f-bio" rows="2" placeholder="Markings, personality, feeding habits…"></textarea>
     </div>
     <div class="field" style="margin-bottom:0"><label>Owner</label>
-      <div class="pill-group" id="pg-owner" style="grid-template-columns:repeat(3,1fr)">
-        <div class="pill active" data-val="Feral">Feral</div>
-        <div class="pill" data-val="Community">Community</div>
-        <div class="pill" data-val="Owned">Owned</div>
-      </div>
-      <input type="hidden" id="f-owner" value="Feral">
+      <input type="text" id="f-owner" value="Feral" placeholder="Feral" autocomplete="off"
+             list="f-owner-list"
+             onfocus="updateOwnerList(document.getElementById('f-colony').value,'f-owner-list')">
+      <datalist id="f-owner-list">
+        <option value="Feral">
+        <option value="Community">
+        <option value="Owned">
+      </datalist>
     </div>
   </div>
 
@@ -398,12 +400,13 @@
     </div>
 
     <div class="field" style="margin-bottom:20px"><label>Owner</label>
-      <div class="pill-group" id="ep-pg-owner" style="grid-template-columns:repeat(3,1fr)">
-        <div class="pill active" data-val="Feral">Feral</div>
-        <div class="pill" data-val="Community">Community</div>
-        <div class="pill" data-val="Owned">Owned</div>
-      </div>
-      <input type="hidden" id="ep-owner" value="Feral">
+      <input type="text" id="ep-owner" value="Feral" placeholder="Feral" autocomplete="off"
+             list="ep-owner-list">
+      <datalist id="ep-owner-list">
+        <option value="Feral">
+        <option value="Community">
+        <option value="Owned">
+      </datalist>
     </div>
 
     <div class="ep-btn-row">
