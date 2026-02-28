@@ -414,7 +414,7 @@
   .btn-export { background: var(--surface2); border: 1.5px solid var(--border); color: var(--text); }
   .btn-danger { background: var(--accent2); color: #fff; border: none; }
   .btn-sm {
-    display: inline-flex; align-items: center; gap: 6px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
     padding: 8px 14px;
     border-radius: 8px;
     border: 1.5px solid var(--border);

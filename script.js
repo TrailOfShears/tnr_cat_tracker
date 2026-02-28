@@ -1605,7 +1605,12 @@ function renderColonies() {
         </div>
       </div>`;
     };
-    const ownerOrder = ['Feral', 'Community', 'Owned'];
+    const knownOrder = ['Feral', 'Community', 'Owned'];
+    const allOwners = [...new Set(colonyCats.map(c => c.owner || 'Feral'))];
+    const ownerOrder = [
+      ...knownOrder.filter(o => allOwners.includes(o)),
+      ...allOwners.filter(o => !knownOrder.includes(o)).sort(),
+    ];
     const catMinis = ownerOrder.map(ownerLabel => {
       const group = colonyCats.filter(c => (c.owner || 'Feral') === ownerLabel);
       if(!group.length) return '';
