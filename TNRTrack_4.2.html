@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>TNR Cat Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header>
+  <div class="logo">🐱 <span>TNR</span>TRACK</div>
+  <div class="colony-badge" id="active-colony-badge" onclick="openColonyPicker()">NO COLONY</div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('log')">+ LOG CAT</div>
+  <div class="tab" onclick="switchTab('cats')">CATS</div>
+  <div class="tab" onclick="switchTab('colonies')">COLONIES</div>
+  <div class="tab" onclick="switchTab('stats')">STATS</div>
+</div>
+
+<!-- ═══════════ LOG CAT VIEW ═══════════ -->
+<div class="view active" id="view-log">
+
+  <div class="edit-banner" id="edit-banner">
+    <div style="font-size:1rem;flex-shrink:0">✏️</div>
+    <div class="edit-banner-text">Editing observation. Changes will overwrite this sighting record.</div>
+    <button class="edit-cancel-btn" onclick="cancelEdit()">✕ Cancel</button>
+  </div>
+
+  <div class="section-label">Which cat?</div>
+
+  <div class="cat-link-bar" id="cat-link-bar" onclick="openCatPickerModal()">
+    <div class="cat-link-icon">📋</div>
+    <div class="cat-link-text">
+      <div class="cat-link-title">Link to known cat</div>
+      <div class="cat-link-sub" id="cat-link-sub">Tap to pick from your roster, or fill in below for a new cat</div>
+    </div>
+    <div class="cat-link-arrow" id="cat-link-arrow">›</div>
+  </div>
+
+  <div class="identity-section" id="identity-section">
+    <div class="identity-locked-label" id="identity-locked-label">
+      <span style="color:var(--green)">🔒</span>
+      <span>Identity locked — shared across all sightings. <button onclick="unlinkCat()" style="background:none;border:none;color:var(--accent);font-family:var(--mono);font-size:0.6rem;cursor:pointer;padding:0;text-decoration:underline;pointer-events:all">Unlink</button></span>
+    </div>
+
+    <div class="field"><label>Cat Name / ID</label><input type="text" id="f-name" placeholder="e.g. Patches, Cat #14..."></div>
+    <div class="field"><label>Colony</label>
+      <select id="f-colony"><option value="">— None / Unknown —</option></select>
+    </div>
+
+    <div class="field"><label>Primary Color</label>
+      <div class="pill-group" id="pg-color">
+        <div class="pill" data-val="Black">Black</div>
+        <div class="pill" data-val="White">White</div>
+        <div class="pill" data-val="Orange">Orange</div>
+        <div class="pill" data-val="Gray">Gray</div>
+        <div class="pill" data-val="Tabby">Tabby</div>
+        <div class="pill" data-val="Calico">Calico</div>
+        <div class="pill" data-val="Tortie">Tortie</div>
+        <div class="pill" data-val="Tuxedo">Tuxedo</div>
+        <div class="pill" data-val="Brown">Brown</div>
+        <div class="pill" data-val="Mixed">Mixed</div>
+      </div>
+      <input type="text" id="f-color" style="margin-top:8px" placeholder="Or type a color...">
+    </div>
+
+    <div class="field"><label>Sex</label>
+      <div class="pill-group" id="pg-sex">
+        <div class="pill" data-val="Male">♂ Male</div>
+        <div class="pill" data-val="Female">♀ Female</div>
+        <div class="pill" data-val="Unknown">? Unknown</div>
+      </div>
+      <input type="hidden" id="f-sex">
+    </div>
+
+    <div class="field" style="margin-bottom:0"><label>Est. Age</label>
+      <div class="pill-group" id="pg-age">
+        <div class="pill" data-val="Kitten (<6mo)">Kitten</div>
+        <div class="pill" data-val="Juvenile (6-12mo)">Juvenile</div>
+        <div class="pill" data-val="Young Adult (1-3yr)">Yng Adult</div>
+        <div class="pill" data-val="Adult (3-7yr)">Adult</div>
+        <div class="pill" data-val="Senior (7yr+)">Senior</div>
+        <div class="pill" data-val="Unknown">Unknown</div>
+      </div>
+      <input type="hidden" id="f-age">
+    </div>
+  </div>
+
+  <div class="field" id="primary-photo-field">
+    <label>Primary Photo <span style="font-weight:400;color:var(--muted)">(saved to cat profile)</span></label>
+    <div class="photo-btn-row">
+      <button class="photo-btn" onclick="document.getElementById('photo-primary-camera').click()">📷 Camera</button>
+      <button class="photo-btn" onclick="document.getElementById('photo-primary-gallery').click()">🖼 Gallery</button>
+    </div>
+    <input type="file" id="photo-primary-camera" accept="image/*" capture="environment" onchange="handlePrimaryPhoto(event)" style="display:none">
+    <input type="file" id="photo-primary-gallery" accept="image/*" onchange="handlePrimaryPhoto(event)" style="display:none">
+    <div class="photo-row" id="primary-photo-row"></div>
+  </div>
+
+  <hr class="section-divider">
+
+  <div class="section-label">This observation</div>
+
+  <div style="display:flex;gap:10px;margin-bottom:14px">
+    <div class="field" style="flex:1;margin:0"><label>Date</label><input type="date" id="f-date"></div>
+    <div class="field" style="flex:1;margin:0"><label>Time</label><input type="time" id="f-time"></div>
+  </div>
+
+  <div class="field"><label>Body Condition (1=Poor · 5=Excellent)</label>
+    <div class="pill-group" id="pg-bcs">
+      <div class="pill" data-val="1">1</div>
+      <div class="pill" data-val="2">2</div>
+      <div class="pill" data-val="3">3</div>
+      <div class="pill" data-val="4">4</div>
+      <div class="pill" data-val="5">5</div>
+    </div>
+    <input type="hidden" id="f-bcs">
+  </div>
+
+  <div class="section-label" style="margin-top:12px">TNR Status</div>
+  <div class="field"><label>Fixed? (Neutered / Ear-Tipped)</label>
+    <div class="pill-group" id="pg-fixed">
+      <div class="pill green" data-val="Yes">✓ Yes — Fixed</div>
+      <div class="pill red" data-val="No">✗ No</div>
+      <div class="pill" data-val="Unknown">? Unknown</div>
+    </div>
+    <input type="hidden" id="f-fixed">
+  </div>
+
+  <div class="field"><label>Trap Status</label>
+    <div class="pill-group" id="pg-trap">
+      <div class="pill" data-val="Not Trapped">Not Trapped</div>
+      <div class="pill" data-val="Trapped Today">Trapped</div>
+      <div class="pill" data-val="Released">Released</div>
+      <div class="pill" data-val="In Transit">In Transit</div>
+      <div class="pill" data-val="At Clinic">At Clinic</div>
+      <div class="pill" data-val="Returned">Returned</div>
+    </div>
+    <input type="hidden" id="f-trap">
+  </div>
+
+  <div class="section-label" style="margin-top:12px">Health Observations</div>
+  <div class="field"><label>Visible Health Concerns (select all that apply)</label>
+    <div class="pill-group" id="pg-health">
+      <div class="pill red" data-val="Eye discharge">Eye Disc.</div>
+      <div class="pill red" data-val="URI symptoms">URI</div>
+      <div class="pill red" data-val="Wound/injury">Wound</div>
+      <div class="pill red" data-val="Mange">Mange</div>
+      <div class="pill red" data-val="Limping">Limping</div>
+      <div class="pill red" data-val="Thin/emaciated">Thin</div>
+      <div class="pill red" data-val="Pregnant">Pregnant</div>
+      <div class="pill green" data-val="Appears healthy">Healthy</div>
+    </div>
+    <input type="hidden" id="f-health">
+  </div>
+
+  <div class="field"><label>Notes</label><textarea id="f-notes" placeholder="Markings, behavior, follow-up needed..."></textarea></div>
+
+  <div class="section-label" style="margin-top:12px">Location</div>
+  <div id="colony-map-section" style="display:none">
+    <div class="field">
+      <label>Pin Location on Colony Map</label>
+      <div class="colony-map-hint" id="log-map-hint">Tap anywhere on the map to place a pin where this cat was seen.</div>
+      <div class="map-picker-wrap" id="log-map-wrap">
+        <canvas id="log-map" class="map-canvas" style="height:240px"></canvas>
+        <div class="map-zoom-controls">
+          <button class="map-zoom-btn" onclick="tileMapZoom(logTileMap,1)">+</button>
+          <button class="map-zoom-btn" onclick="tileMapZoom(logTileMap,-1)">−</button>
+        </div>
+        <div class="map-pin-indicator" id="log-map-label">Tap map to drop pin</div>
+      </div>
+      <div class="map-coords-display" id="log-map-coords"></div>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>GPS Coordinates</label>
+    <div class="gps-row">
+      <input type="text" id="f-gps" placeholder="lat, lng">
+      <button class="gps-btn" onclick="getGPS()">📍 GET GPS</button>
+    </div>
+    <div class="gps-status" id="gps-status"></div>
+    <div class="gps-note" id="gps-note" style="display:none">
+      <strong>⚠ GPS requires HTTPS or localhost.</strong><br>
+      Host on any web server, or drag &amp; drop this file to <em>netlify.com/drop</em> for a free HTTPS link. You can also type coordinates manually above.
+    </div>
+  </div>
+  <div class="field"><label>Location Description</label><input type="text" id="f-location" placeholder="e.g. Behind dumpsters, NE corner..."></div>
+
+  <div class="section-label" style="margin-top:12px">Observation Photos</div>
+  <div class="photo-btn-row">
+    <button class="photo-btn" onclick="document.getElementById('photo-obs-camera').click()">📷 Camera</button>
+    <button class="photo-btn" onclick="document.getElementById('photo-obs-gallery').click()">🖼 Gallery / File</button>
+  </div>
+  <input type="file" id="photo-obs-camera" accept="image/*" capture="environment" multiple onchange="handleObsPhotos(event)" style="display:none">
+  <input type="file" id="photo-obs-gallery" accept="image/*" multiple onchange="handleObsPhotos(event)" style="display:none">
+  <div class="photo-row" id="obs-photo-row"></div>
+  <div style="font-family:var(--mono);font-size:0.62rem;color:var(--muted);margin-top:6px" id="photo-storage-note"></div>
+
+  <div style="height:16px"></div>
+  <button class="btn btn-primary" id="save-btn" onclick="saveObservation()">💾 SAVE OBSERVATION</button>
+  <button class="btn btn-outline" style="margin-top:10px" onclick="clearForm()">Clear Form</button>
+
+</div>
+
+<!-- ═══════════ CATS LIST VIEW ═══════════ -->
+<div class="view" id="view-cats">
+  <div class="search-row">
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input type="text" placeholder="Search cats..." oninput="renderCats(this.value)">
+    </div>
+    <select class="filter-select" onchange="filterCats(this.value)" id="filter-select">
+      <option value="">All</option>
+      <option value="not-neutered">Not Neutered</option>
+      <option value="neutered">Neutered</option>
+      <option value="trapped">Trapped</option>
+      <option value="health">Health Flag</option>
+    </select>
+  </div>
+  <div id="cats-list"></div>
+</div>
+
+<!-- ═══════════ COLONIES VIEW ═══════════ -->
+<div class="view" id="view-colonies">
+  <div class="section-label">Manage Colonies</div>
+  <div class="colony-add-row">
+    <input type="text" id="new-colony-name" placeholder="Colony name..." onkeydown="if(event.key==='Enter'){event.preventDefault();addColony();}">
+    <button class="colony-add-btn" onclick="addColony()">Add</button>
+  </div>
+  <div id="colonies-list"></div>
+</div>
+
+<!-- ═══════════ STATS VIEW ═══════════ -->
+<div class="view" id="view-stats">
+  <div class="section-label">Summary</div>
+  <div class="stat-grid" id="stat-grid"></div>
+  <div class="section-label">Progress</div>
+  <div id="stat-bars"></div>
+  <div class="section-label">Export Data</div>
+  <button class="btn btn-export" onclick="exportCSV()" style="margin-bottom:10px">📄 Export CSV</button>
+  <button class="btn btn-export" onclick="exportJSON()">📦 Export JSON</button>
+  <hr style="border-color:var(--border);margin:20px 0">
+  <div class="section-label">Import / Restore Data</div>
+  <p style="font-size:0.78rem;color:var(--muted);margin:0 0 10px">Restore from a previous export. Existing records with matching IDs will be updated; new records will be added.</p>
+  <label class="btn btn-export" style="cursor:pointer;margin-bottom:10px;display:block;text-align:center">
+    📦 Import JSON
+    <input type="file" accept=".json,application/json" style="display:none" onchange="importJSON(event)">
+  </label>
+  <label class="btn btn-export" style="cursor:pointer;display:block;text-align:center">
+    📄 Import CSV
+    <input type="file" accept=".csv,text/csv" style="display:none" onchange="importCSV(event)">
+  </label>
+  <hr style="border-color:var(--border);margin:20px 0">
+  <div class="section-label" style="color:var(--accent2)">Danger Zone</div>
+  <button class="btn btn-outline" onclick="clearAll()" style="border-color:var(--accent2);color:var(--accent2)">🗑 Clear All Data</button>
+</div>
+
+<!-- ═══════════ CAT DETAIL MODAL ═══════════ -->
+<div class="modal-overlay" id="detail-modal" onclick="closeDetailIfOutside(event)">
+  <div class="modal" id="detail-content"></div>
+</div>
+
+<!-- ═══════════ CAT PICKER MODAL ═══════════ -->
+<div class="modal-overlay" id="cat-picker-modal" onclick="closeCatPickerIfOutside(event)">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Link to known cat</div>
+    <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:12px">Tap a cat to link this observation. Their identity (name, color, sex) is pre-filled and locked.</div>
+    <div class="known-cats-grid" id="cat-picker-grid"></div>
+    <button class="btn btn-outline" style="margin-top:16px" onclick="closeCatPickerModal()">Cancel — new cat</button>
+  </div>
+</div>
+
+<!-- ═══════════ COLONY PICKER MODAL ═══════════ -->
+<div class="modal-overlay" id="colony-modal" onclick="closeColonyModal(event)">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Active Colony</div>
+    <div class="field"><label>Logging cats for colony:</label>
+      <select id="active-colony-select" onchange="setActiveColony(this.value)">
+        <option value="">— None —</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="closeColonyPickerModal()">Done</button>
+  </div>
+</div>
+
+<!-- ═══════════ COLONY MAP SETUP MODAL ═══════════ -->
+<div class="modal-overlay" id="colony-map-modal" onclick="closeColonyMapIfOutside(event)">
+  <div class="modal" id="colony-map-modal-content">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="colony-map-modal-title">Set Colony Territory</div>
+    <div class="colony-map-hint">
+      Pan and zoom the map to frame your colony's territory. The current map view will be saved as this colony's boundary.<br><br>
+      <strong style="color:var(--accent)">Tip:</strong> Search for your address below to jump to your location.
+    </div>
+    <div class="field" style="display:flex;gap:8px">
+      <input type="text" id="colony-map-search" placeholder="Search address..." style="flex:1">
+      <button class="gps-btn" onclick="searchColonyMapAddress()">Go</button>
+    </div>
+    <div id="colony-map-status" style="font-family:var(--mono);font-size:0.62rem;color:var(--muted);margin-bottom:8px;min-height:18px"></div>
+    <div class="map-picker-wrap" id="colony-setup-map-wrap">
+      <canvas id="colony-setup-map" class="map-canvas" style="height:300px"></canvas>
+      <div class="map-zoom-controls">
+        <button class="map-zoom-btn" onclick="tileMapZoom(colonyTileMap,1)">+</button>
+        <button class="map-zoom-btn" onclick="tileMapZoom(colonyTileMap,-1)">−</button>
+      </div>
+      <div class="map-pin-indicator">Pan &amp; zoom to frame territory</div>
+    </div>
+    <div class="map-coords-display" id="colony-map-bounds-display"></div>
+    <div style="height:14px"></div>
+    <button class="btn btn-primary" onclick="saveColonyMapBounds()">💾 Save Territory</button>
+    <button class="btn btn-outline" style="margin-top:10px" onclick="closeColonyMapModal()">Cancel</button>
+  </div>
+</div>
+
+<!-- ═══════════ EDIT CAT PROFILE MODAL ═══════════ -->
+<div class="modal-overlay" id="edit-profile-modal" onclick="closeEditProfileIfOutside(event)">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Edit Cat Profile</div>
+
+    <div class="field">
+      <label>Primary Photo</label>
+      <div class="photo-btn-row">
+        <button class="photo-btn" onclick="document.getElementById('ep-photo-camera').click()">📷 Camera</button>
+        <button class="photo-btn" onclick="document.getElementById('ep-photo-gallery').click()">🖼 Gallery</button>
+      </div>
+      <input type="file" id="ep-photo-camera" accept="image/*" capture="environment" onchange="handleEpPhoto(event)" style="display:none">
+      <input type="file" id="ep-photo-gallery" accept="image/*" onchange="handleEpPhoto(event)" style="display:none">
+      <div class="photo-row" id="ep-photo-row"></div>
+    </div>
+
+    <div class="field"><label>Cat Name / ID</label><input type="text" id="ep-name" placeholder="e.g. Patches, Cat #14..."></div>
+
+    <div class="field"><label>Colony</label>
+      <select id="ep-colony"><option value="">— None / Unknown —</option></select>
+    </div>
+
+    <div class="field"><label>Primary Color</label>
+      <div class="pill-group" id="ep-pg-color" style="grid-template-columns:repeat(5,1fr)">
+        <div class="pill" data-val="Black">Black</div>
+        <div class="pill" data-val="White">White</div>
+        <div class="pill" data-val="Orange">Orange</div>
+        <div class="pill" data-val="Gray">Gray</div>
+        <div class="pill" data-val="Tabby">Tabby</div>
+        <div class="pill" data-val="Calico">Calico</div>
+        <div class="pill" data-val="Tortie">Tortie</div>
+        <div class="pill" data-val="Tuxedo">Tuxedo</div>
+        <div class="pill" data-val="Brown">Brown</div>
+        <div class="pill" data-val="Mixed">Mixed</div>
+      </div>
+      <input type="text" id="ep-color" style="margin-top:8px" placeholder="Or type a color...">
+    </div>
+
+    <div class="field"><label>Sex</label>
+      <div class="pill-group" id="ep-pg-sex" style="grid-template-columns:repeat(3,1fr)">
+        <div class="pill" data-val="Male">♂ Male</div>
+        <div class="pill" data-val="Female">♀ Female</div>
+        <div class="pill" data-val="Unknown">? Unknown</div>
+      </div>
+      <input type="hidden" id="ep-sex">
+    </div>
+
+    <div class="field"><label>Est. Age</label>
+      <div class="pill-group" id="ep-pg-age" style="grid-template-columns:repeat(3,1fr)">
+        <div class="pill" data-val="Kitten (<6mo)">Kitten</div>
+        <div class="pill" data-val="Juvenile (6-12mo)">Juvenile</div>
+        <div class="pill" data-val="Young Adult (1-3yr)">Yng Adult</div>
+        <div class="pill" data-val="Adult (3-7yr)">Adult</div>
+        <div class="pill" data-val="Senior (7yr+)">Senior</div>
+        <div class="pill" data-val="Unknown">Unknown</div>
+      </div>
+      <input type="hidden" id="ep-age">
+    </div>
+
+    <div class="field" style="margin-bottom:20px"><label>Bio / Notes</label>
+      <textarea id="ep-bio" rows="3" placeholder="Markings, personality, feeding notes…" style="width:100%;box-sizing:border-box;background:var(--surface2);color:var(--fg);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:0.85rem;resize:vertical"></textarea>
+    </div>
+
+    <div class="ep-btn-row">
+      <button class="btn btn-primary" onclick="saveEditProfile()">💾 Save</button>
+      <button class="btn btn-outline" onclick="closeEditProfile()">Cancel</button>
+      <button class="btn btn-danger" onclick="deleteFromEditProfile()">🗑 Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ SAVE FLASH ═══════════ -->
+<div class="save-flash" id="save-flash">
+  <div class="save-flash-box">
+    <div class="save-flash-icon">✅</div>
+    <div class="save-flash-name" id="save-flash-name">Saved!</div>
+    <div class="save-flash-sub" id="save-flash-sub"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="script.js"></script>
+
+</body>
+</html>
