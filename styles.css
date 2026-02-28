@@ -180,7 +180,8 @@
   .identity-locked-label.show { display: flex; }
 
   .pill-group { display: grid; gap: 8px; }
-  #pg-color    { grid-template-columns: repeat(5, 1fr); }
+  #pg-color    { grid-template-columns: repeat(5, 1fr); gap: 4px; }
+  #ep-pg-color { gap: 4px; }
   #pg-sex      { grid-template-columns: repeat(3, 1fr); }
   #pg-age      { grid-template-columns: repeat(3, 1fr); }
   #pg-bcs      { grid-template-columns: repeat(5, 1fr); }
@@ -191,7 +192,7 @@
 
   .pill {
     padding: 9px 4px;
-    border-radius: 20px;
+    border-radius: 4px;
     border: 1.5px solid var(--border);
     font-size: 0.72rem;
     font-weight: 700;
@@ -201,9 +202,6 @@
     user-select: none;
     background: var(--surface);
     text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
   .pill.active { background: var(--accent); border-color: var(--accent); color: #000; }
   .pill.green.active { background: var(--green); border-color: var(--green); color: #000; }
