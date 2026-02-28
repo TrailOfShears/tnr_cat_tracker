@@ -1,7 +1,7 @@
 // ══════════════════════════════════════════════════════════════════
 // STATE
 // ══════════════════════════════════════════════════════════════════
-let cats        = [];   // [{ id, name, colony, color, sex, age }]
+let cats        = [];   // [{ id, name, colony, color, sex, age, bio }]
 let observations= [];   // [{ id, cat_id, date, time, gps, location, bcs, fixed, trap, health, notes }]
 let colonies    = [];   // [{ name, bounds? }]
 let activeColony = localStorage.getItem('tnr_active_colony') || '';
@@ -19,72 +19,84 @@ let logTileMap = null;
 let colonyMapEditingIdx = null;
 
 // ══════════════════════════════════════════════════════════════════
-// STORAGE — two-table architecture
+// DATABASE — IndexedDB via Dexie.js
 // ══════════════════════════════════════════════════════════════════
-function saveCats() {
-  try { localStorage.setItem('tnr_cats', JSON.stringify(cats)); return true; }
+const db = new Dexie('TNRTracker');
+db.version(1).stores({
+  cats:         'id',
+  observations: 'id, cat_id',
+  colonies:     'id',
+  photos:       'key'
+});
+
+// In-memory photo cache — keeps render functions synchronous
+const photoCache = new Map();
+
+async function saveCats() {
+  try { await db.cats.bulkPut(cats); return true; }
   catch(e) {
-    alert('⚠ DATA NOT SAVED — Storage full!\n\nYour cat records could not be saved. Export your data immediately from the Stats tab before closing this page.');
+    alert('⚠ DATA NOT SAVED — Storage error!\n\nYour cat records could not be saved. Export your data immediately from the Stats tab before closing this page.');
     return false;
   }
 }
-function saveObs() {
-  try { localStorage.setItem('tnr_obs', JSON.stringify(observations)); return true; }
+async function saveObs() {
+  try { await db.observations.bulkPut(observations); return true; }
   catch(e) {
-    alert('⚠ DATA NOT SAVED — Storage full!\n\nYour observation could not be saved. Export your data immediately from the Stats tab before closing this page.');
+    alert('⚠ DATA NOT SAVED — Storage error!\n\nYour observation could not be saved. Export your data immediately from the Stats tab before closing this page.');
     return false;
   }
 }
-function saveColonies() {
-  try { localStorage.setItem('tnr_colonies', JSON.stringify(colonies)); }
-  catch(e) { showToast('⚠ Colony save failed — storage full'); }
+async function saveColonies() {
+  try { await db.colonies.bulkPut(colonies); }
+  catch(e) { showToast('⚠ Colony save failed: ' + e.message); }
 }
 
-function savePhotoCat(id, dataUrl) {
-  if(!dataUrl) { localStorage.removeItem('tnr_photo_cat_' + id); return true; }
-  try { localStorage.setItem('tnr_photo_cat_' + id, dataUrl); return true; }
-  catch(e) {
-    showToast('⚠ Photo not saved — storage full. Export data from Stats tab.');
-    return false;
-  }
+async function savePhotoCat(id, dataUrl) {
+  const key = 'cat_' + id;
+  if(!dataUrl) { photoCache.delete(key); await db.photos.delete(key); return true; }
+  photoCache.set(key, dataUrl);
+  try { await db.photos.put({ key, data: dataUrl }); return true; }
+  catch(e) { showToast('⚠ Photo not saved — storage full. Export data from Stats tab.'); return false; }
 }
-function loadPhotoCat(id) { return localStorage.getItem('tnr_photo_cat_' + id) || null; }
-function deletePhotoCat(id) { localStorage.removeItem('tnr_photo_cat_' + id); }
+function loadPhotoCat(id) { return photoCache.get('cat_' + id) || null; }
+function deletePhotoCat(id) { savePhotoCat(id, null); }
 
-function savePhotosObs(id, photos) {
-  if(!photos || !photos.length) { localStorage.removeItem('tnr_photo_obs_' + id); return true; }
-  try { localStorage.setItem('tnr_photo_obs_' + id, JSON.stringify(photos)); return true; }
-  catch(e) {
-    showToast('⚠ Observation photos not saved — storage full.');
-    return false;
-  }
+async function savePhotosObs(id, photos) {
+  const key = 'obs_' + id;
+  if(!photos || !photos.length) { photoCache.delete(key); await db.photos.delete(key); return true; }
+  photoCache.set(key, photos);
+  try { await db.photos.put({ key, data: photos }); return true; }
+  catch(e) { showToast('⚠ Observation photos not saved — storage full.'); return false; }
 }
 function loadPhotosObs(id) {
-  try { return JSON.parse(localStorage.getItem('tnr_photo_obs_' + id) || 'null') || []; }
-  catch(e) { return []; }
+  const cached = photoCache.get('obs_' + id);
+  return Array.isArray(cached) ? cached : [];
 }
-function deletePhotosObs(id) { localStorage.removeItem('tnr_photo_obs_' + id); }
+function deletePhotosObs(id) { savePhotosObs(id, []); }
 
-function loadAll() {
-  try {
-    const raw = JSON.parse(localStorage.getItem('tnr_colonies') || '[]');
-    colonies = raw.map(c => typeof c === 'string' ? { name: c } : c);
-  } catch(e) { colonies = []; }
+async function loadAll() {
+  const [dbCats, dbObs, dbColonies, dbPhotos] = await Promise.all([
+    db.cats.toArray(),
+    db.observations.toArray(),
+    db.colonies.toArray(),
+    db.photos.toArray()
+  ]);
 
-  // Detect old v3 flat format and migrate
-  const hasCats = localStorage.getItem('tnr_cats');
-  const hasObs  = localStorage.getItem('tnr_obs');
-  if(hasCats && !hasObs) {
-    try { migrateFromV3(JSON.parse(hasCats)); } catch(e) { cats = []; observations = []; }
+  // One-time migration from localStorage if IndexedDB is empty
+  if(!dbCats.length && !dbObs.length) {
+    await migrateFromLocalStorage();
     return;
   }
 
-  try { cats = JSON.parse(localStorage.getItem('tnr_cats') || '[]'); }
-  catch(e) { cats = []; }
-  try { observations = JSON.parse(localStorage.getItem('tnr_obs') || '[]'); }
-  catch(e) { observations = []; }
+  cats = dbCats;
+  observations = dbObs;
+  colonies = dbColonies;
 
-  // Migrate legacy neutered/eartip fields to unified fixed field
+  // Pre-populate photo cache for synchronous render access
+  photoCache.clear();
+  dbPhotos.forEach(p => photoCache.set(p.key, p.data));
+
+  // Migrate legacy neutered/eartip → fixed (in-place, one-time)
   let migrated = false;
   observations.forEach(o => {
     if(!o.fixed && (o.neutered === 'Yes' || o.eartip === 'Yes')) {
@@ -92,6 +104,64 @@ function loadAll() {
     }
   });
   if(migrated) saveObs();
+}
+
+async function migrateFromLocalStorage() {
+  let lsCats = [], lsObs = [], lsColonies = [];
+  try { lsCats = JSON.parse(localStorage.getItem('tnr_cats') || '[]'); } catch(e) {}
+  try { lsObs  = JSON.parse(localStorage.getItem('tnr_obs')  || '[]'); } catch(e) {}
+  try {
+    const raw = JSON.parse(localStorage.getItem('tnr_colonies') || '[]');
+    lsColonies = raw.map((c, i) => typeof c === 'string' ? { id: 'col_' + i, name: c } : { id: c.id || 'col_' + i, ...c });
+  } catch(e) {}
+
+  // v3 flat format: cats key has merged cat+obs data, obs key absent
+  if(lsCats.length && !lsObs.length) {
+    migrateFromV3(lsCats);   // populates cats[] and observations[] synchronously
+    lsCats = cats; lsObs = observations;
+  } else {
+    cats = lsCats;
+    observations = lsObs;
+  }
+  colonies = lsColonies;
+
+  // Fix legacy neutered/eartip
+  observations.forEach(o => {
+    if(!o.fixed && (o.neutered === 'Yes' || o.eartip === 'Yes')) o.fixed = 'Yes';
+  });
+
+  // Migrate photos from localStorage keys → IndexedDB + photoCache
+  const photoEntries = [];
+  for(let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if(!k || !k.startsWith('tnr_photo')) continue;
+    const raw = localStorage.getItem(k);
+    if(!raw) continue;
+    let idbKey, data;
+    if(k.startsWith('tnr_photo_cat_')) {
+      idbKey = 'cat_' + k.slice('tnr_photo_cat_'.length);
+      data = raw;
+    } else if(k.startsWith('tnr_photo_obs_')) {
+      idbKey = 'obs_' + k.slice('tnr_photo_obs_'.length);
+      try { data = JSON.parse(raw); } catch { data = raw; }
+    } else if(k.startsWith('tnr_photo_')) {
+      // v3 legacy: tnr_photo_<id>
+      idbKey = 'legacy_' + k.slice('tnr_photo_'.length);
+      try { data = JSON.parse(raw); } catch { data = raw; }
+    } else continue;
+    photoEntries.push({ key: idbKey, data });
+    photoCache.set(idbKey, data);
+  }
+
+  if(lsCats.length || lsObs.length) {
+    await Promise.all([
+      db.cats.bulkPut(cats),
+      db.observations.bulkPut(observations),
+      db.colonies.bulkPut(colonies.filter(c => c.id)),
+      db.photos.bulkPut(photoEntries)
+    ]);
+    showToast(`✓ Migrated ${cats.length} cats, ${observations.length} obs to database`);
+  }
 }
 
 function migrateFromV3(oldCats) {
@@ -123,7 +193,6 @@ function migrateFromV3(oldCats) {
       health: old.health || '', notes: old.notes || '',
     });
   });
-  saveCats(); saveObs();
   showToast(`✓ Migrated ${oldCats.length} records`);
 }
 
@@ -175,8 +244,8 @@ function esc(s) {
 // ══════════════════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════════════════
-function init() {
-  loadAll();
+async function init() {
+  await loadAll();
   setDateTime();
   setupPillListeners();
   syncColonyDropdowns();
@@ -947,6 +1016,7 @@ function saveObservation() {
         color: document.getElementById('f-color').value,
         sex: document.getElementById('f-sex').value,
         age: document.getElementById('f-age').value,
+        bio: document.getElementById('f-bio').value.trim(),
       };
       cats.push(newCat);
       saveCats();
@@ -960,6 +1030,8 @@ function saveObservation() {
       cat.color = document.getElementById('f-color').value;
       cat.sex = document.getElementById('f-sex').value;
       cat.age = document.getElementById('f-age').value;
+      const bioDraft = document.getElementById('f-bio').value.trim();
+      if(bioDraft) cat.bio = bioDraft;
       saveCats();
     }
   }
@@ -1034,6 +1106,7 @@ function editObservation(obsId) {
   document.getElementById('f-name').value = cat.name;
   document.getElementById('f-color').value = cat.color || '';
   document.getElementById('f-colony').value = cat.colony || '';
+  document.getElementById('f-bio').value = cat.bio || '';
   setPillValue('pg-color', cat.color);
   setPillValue('pg-sex', cat.sex); document.getElementById('f-sex').value = cat.sex || '';
   setPillValue('pg-age', cat.age); document.getElementById('f-age').value = cat.age || '';
@@ -1100,6 +1173,7 @@ function clearForm() {
   document.getElementById('f-colony').value = activeColony || '';
   document.getElementById('f-sex').value = '';
   document.getElementById('f-age').value = '';
+  document.getElementById('f-bio').value = '';
   document.getElementById('f-gps').value = '';
   document.getElementById('f-location').value = '';
   document.getElementById('f-notes').value = '';
@@ -1694,7 +1768,9 @@ function importJSON(event) {
       if (!existing) { cats.push(catFields); catsAdded++; }
       else { Object.assign(existing, catFields); catsUpdated++; }
       if (primary_photo) {
-        try { localStorage.setItem(`tnr_photo_cat_${catFields.id}`, primary_photo); photosRestored++; } catch(ex) { /* quota */ }
+        photoCache.set('cat_' + catFields.id, primary_photo);
+        db.photos.put({ key: 'cat_' + catFields.id, data: primary_photo }).catch(() => {});
+        photosRestored++;
       }
     });
     saveCats();
@@ -1706,10 +1782,10 @@ function importJSON(event) {
       if (!existing) { observations.push(obsFields); obsAdded++; }
       else Object.assign(existing, obsFields);
       if (photos && photos.length) {
-        photos.forEach((p, i) => {
-          if (!p) return;
-          try { localStorage.setItem(`tnr_photo_obs_${obsFields.id}_${i}`, p); photosRestored++; } catch(ex) { /* quota */ }
-        });
+        const obsPhotoKey = 'obs_' + obsFields.id;
+        photoCache.set(obsPhotoKey, photos);
+        db.photos.put({ key: obsPhotoKey, data: photos }).catch(() => {});
+        photosRestored += photos.filter(Boolean).length;
       }
     });
     saveObs();
@@ -1832,13 +1908,11 @@ function clearAll() {
   if(!confirm('⚠ This will permanently delete ALL cats, observations, and colonies. Are you absolutely sure?')) return;
   if(!confirm('Last chance — this cannot be undone. Delete everything?')) return;
 
-  // Remove all photo keys
-  const keysToRemove = [];
-  for(let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if(k && k.startsWith('tnr_')) keysToRemove.push(k);
-  }
-  keysToRemove.forEach(k => localStorage.removeItem(k));
+  db.cats.clear();
+  db.observations.clear();
+  db.colonies.clear();
+  db.photos.clear();
+  photoCache.clear();
 
   cats = []; observations = []; colonies = [];
   activeColony = '';

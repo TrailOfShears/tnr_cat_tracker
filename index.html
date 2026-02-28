@@ -80,7 +80,7 @@
       <input type="hidden" id="f-sex">
     </div>
 
-    <div class="field" style="margin-bottom:0"><label>Est. Age</label>
+    <div class="field"><label>Est. Age</label>
       <div class="pill-group" id="pg-age">
         <div class="pill" data-val="Kitten (<6mo)">Kitten</div>
         <div class="pill" data-val="Juvenile (6-12mo)">Juvenile</div>
@@ -90,6 +90,9 @@
         <div class="pill" data-val="Unknown">Unknown</div>
       </div>
       <input type="hidden" id="f-age">
+    </div>
+    <div class="field" style="margin-bottom:0"><label>Bio / Notes <span style="font-weight:400;color:var(--muted)">(saved to cat profile)</span></label>
+      <textarea id="f-bio" rows="2" placeholder="Markings, personality, feeding habits…"></textarea>
     </div>
   </div>
 
@@ -405,6 +408,7 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="https://unpkg.com/dexie@3.2.4/dist/dexie.min.js"></script>
 <script src="script.js"></script>
 
 </body>
