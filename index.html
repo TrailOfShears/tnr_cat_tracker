@@ -371,6 +371,68 @@
   </div>
 </div>
 
+<!-- ═══════════ COLONY OBSERVATION MAP MODAL ═══════════ -->
+<div class="modal-overlay" id="colony-overview-map-modal" onclick="closeColonyOverviewIfOutside(event)">
+  <div class="modal" style="padding-bottom:20px">
+    <div class="modal-handle" onclick="closeColonyOverviewMap()"></div>
+    <div class="modal-title" id="colony-overview-map-title">Colony Map</div>
+
+    <!-- Filter row 1: cat + status -->
+    <div style="display:flex;gap:6px;margin-bottom:6px">
+      <select id="col-map-filter-cat" onchange="renderColonyOverviewMap()"
+              style="flex:2;min-width:0;font-size:0.72rem;padding:8px 8px"></select>
+      <select id="col-map-filter-status" onchange="renderColonyOverviewMap()"
+              style="flex:1;min-width:0;font-size:0.72rem;padding:8px 4px">
+        <option value="">All status</option>
+        <option value="fixed">Fixed</option>
+        <option value="unfixed">Not Fixed</option>
+      </select>
+    </div>
+    <!-- Filter row 2: health + show mode -->
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      <select id="col-map-filter-health" onchange="renderColonyOverviewMap()"
+              style="flex:1;min-width:0;font-size:0.72rem;padding:8px 8px">
+        <option value="">Any health</option>
+        <option value="concerns">Has concerns</option>
+        <option value="healthy">Healthy</option>
+      </select>
+      <select id="col-map-filter-show" onchange="renderColonyOverviewMap()"
+              style="flex:1;min-width:0;font-size:0.72rem;padding:8px 4px">
+        <option value="latest">Latest obs</option>
+        <option value="all">All obs</option>
+      </select>
+    </div>
+
+    <!-- Count + legend -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <div id="colony-overview-map-count"
+           style="font-family:var(--mono);font-size:0.6rem;color:var(--muted)"></div>
+      <div style="display:flex;gap:10px;font-family:var(--mono);font-size:0.62rem">
+        <span style="color:#3fcf6e">● Fixed</span>
+        <span style="color:#e05c5c">● Unfixed</span>
+        <span style="color:#f0a500">● Unknown</span>
+      </div>
+    </div>
+
+    <!-- Map -->
+    <div class="map-picker-wrap" style="margin-bottom:0">
+      <canvas id="colony-overview-map-canvas" class="map-canvas" style="height:340px;cursor:default"></canvas>
+      <div class="map-zoom-controls">
+        <button class="map-zoom-btn" onclick="tileMapZoom(colonyOverviewMap,1)">+</button>
+        <button class="map-zoom-btn" onclick="tileMapZoom(colonyOverviewMap,-1)">−</button>
+      </div>
+      <!-- Tap popup -->
+      <div id="colony-overview-map-popup"
+           style="display:none;position:absolute;bottom:8px;left:8px;right:8px;
+                  background:var(--surface);border:1.5px solid var(--border);
+                  border-radius:10px;padding:10px 12px;z-index:10"></div>
+    </div>
+    <div style="font-family:var(--mono);font-size:0.6rem;color:var(--muted);margin-top:6px;text-align:center">
+      Tap a marker · Pan &amp; pinch to zoom
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════ EDIT CAT PROFILE MODAL ═══════════ -->
 <div class="modal-overlay" id="edit-profile-modal" onclick="closeEditProfileIfOutside(event)">
   <div class="modal">

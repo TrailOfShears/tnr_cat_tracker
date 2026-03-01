@@ -18,6 +18,9 @@ let relationships  = [];
 let colonyTileMap = null;
 let logTileMap = null;
 let colonyMapEditingIdx = null;
+let catDetailTileMap = null;
+let colonyOverviewMap = null;
+let colonyOverviewMapIdx = null;
 
 // ══════════════════════════════════════════════════════════════════
 // DATABASE — IndexedDB via Dexie.js
@@ -322,8 +325,10 @@ class TileMap {
     this.lng = opts.lng || -98.35;
     this.zoom = opts.zoom || 15;
     this.pinLat = null; this.pinLng = null;
+    this.markers = [];
     this.onPan = opts.onPan || null;
     this.onTap = opts.onTap || null;
+    this.onMarkerTap = opts.onMarkerTap || null;
     this.showBounds = opts.showBounds || null;
     this._tiles = new Map();
     this._drag = null; this._lastPinch = null; this._hasDragged = false;
@@ -375,17 +380,35 @@ class TileMap {
     this.onPan && this.onPan(this);
   }
 
-  fitBounds(sw, ne) {
+  fitBounds(sw, ne, minZ) {
+    minZ = minZ !== undefined ? minZ : 15;
     this.lat = (sw[0] + ne[0]) / 2;
     this.lng = (sw[1] + ne[1]) / 2;
     const w = this._w || 400, h = this._h || 300;
     for(let z = this.maxZoom; z >= this.minZoom; z--) {
       const dx = Math.abs(this._lngToX(ne[1], z) - this._lngToX(sw[1], z));
       const dy = Math.abs(this._latToY(sw[0], z) - this._latToY(ne[0], z));
-      if(dx <= w * 0.85 && dy <= h * 0.85) { this.zoom = Math.max(z, 15); break; }
+      if(dx <= w * 0.85 && dy <= h * 0.85) { this.zoom = Math.max(z, minZ); break; }
     }
     this.draw();
     this.onPan && this.onPan(this);
+  }
+
+  setMarkers(markers) { this.markers = markers || []; this.draw(); }
+
+  fitMarkers(markers, minZ) {
+    if(!markers || !markers.length) return;
+    minZ = minZ !== undefined ? minZ : 15;
+    if(markers.length === 1) { this.setView(markers[0].lat, markers[0].lng, minZ); return; }
+    const lats = markers.map(m => m.lat);
+    const lngs = markers.map(m => m.lng);
+    const latPad = (Math.max(...lats) - Math.min(...lats)) * 0.2 || 0.002;
+    const lngPad = (Math.max(...lngs) - Math.min(...lngs)) * 0.2 || 0.002;
+    this.fitBounds(
+      [Math.min(...lats) - latPad, Math.min(...lngs) - lngPad],
+      [Math.max(...lats) + latPad, Math.max(...lngs) + lngPad],
+      minZ
+    );
   }
 
   zoom_(delta, aroundX, aroundY) {
@@ -503,6 +526,32 @@ class TileMap {
       ctx.strokeStyle = '#e05c5c'; ctx.lineWidth = 2; ctx.stroke();
     }
 
+    // Multi-marker rendering
+    (this.markers || []).forEach(m => {
+      const { x, y } = this.latLngToCanvas(m.lat, m.lng);
+      if(x < -20 || x > w + 20 || y < -20 || y > h + 20) return;
+      const r = m.size || 8;
+      ctx.save();
+      ctx.globalAlpha = m.alpha !== undefined ? m.alpha : 1;
+      ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 5; ctx.shadowOffsetY = 1;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = m.color || '#f0a500'; ctx.fill();
+      ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.restore();
+      if(m.label) {
+        ctx.save();
+        ctx.globalAlpha = m.alpha !== undefined ? m.alpha : 1;
+        ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center';
+        const lw = ctx.measureText(m.label).width;
+        ctx.fillStyle = 'rgba(0,0,0,0.78)';
+        ctx.fillRect(x - lw/2 - 3, y - r - 17, lw + 6, 13);
+        ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle';
+        ctx.fillText(m.label, x, y - r - 11);
+        ctx.restore();
+      }
+    });
+
     ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, h - 14, 160, 14);
     ctx.fillStyle = '#7b819e'; ctx.font = '9px sans-serif';
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
@@ -615,7 +664,18 @@ class TileMap {
     this.onPan && this.onPan(this);
   }
 
-  _tapAt(cx, cy) { this.onTap && this.onTap(this.canvasToLatLng(cx, cy)); }
+  _tapAt(cx, cy) {
+    const ms = this.markers || [];
+    for(let i = ms.length - 1; i >= 0; i--) {
+      const m = ms[i];
+      const { x, y } = this.latLngToCanvas(m.lat, m.lng);
+      if(Math.hypot(cx - x, cy - y) < (m.size || 8) + 8) {
+        this.onMarkerTap && this.onMarkerTap(m);
+        return;
+      }
+    }
+    this.onTap && this.onTap(this.canvasToLatLng(cx, cy));
+  }
 }
 
 function tileMapZoom(map, delta) { if(map) map.zoom_(delta); }
@@ -1413,6 +1473,19 @@ function openDetailModal(catId) {
   statusTags += `<span class="tag">${esc(cat.owner || 'Feral')}</span>`;
   if(cat.colony) statusTags += `<span class="tag colony">${esc(cat.colony)}</span>`;
 
+  const gpsObs = obs.filter(o => o.gps && o.gps.trim());
+  const locMapHtml = gpsObs.length ? `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div class="section-label" style="margin:0">Location History (${gpsObs.length})</div>
+    </div>
+    <div class="map-picker-wrap" style="margin-bottom:16px">
+      <canvas id="cat-detail-map" class="map-canvas" style="height:200px;cursor:default"></canvas>
+      <div class="map-zoom-controls">
+        <button class="map-zoom-btn" onclick="tileMapZoom(catDetailTileMap,1)">+</button>
+        <button class="map-zoom-btn" onclick="tileMapZoom(catDetailTileMap,-1)">−</button>
+      </div>
+    </div>` : '';
+
   document.getElementById('detail-content').innerHTML = `
     <div class="modal-handle" onclick="closeDetailModal()"></div>
     ${photoHtml}
@@ -1425,15 +1498,41 @@ function openDetailModal(catId) {
       <button class="btn-sm" style="flex:1;border-color:var(--purple);color:var(--purple-light)" onclick="openEditProfile('${catId}')">✏️ Edit</button>
       <button class="btn-sm btn-danger" style="flex:1" onclick="deleteCat('${catId}')">🗑 Delete</button>
     </div>
+    ${locMapHtml}
     ${buildRelSection(catId)}
     <div class="section-label">Observation History (${obs.length})</div>
     <div class="obs-timeline">${obsHtml}</div>
   `;
 
   document.getElementById('detail-modal').classList.add('open');
+
+  // Initialise cat location map after DOM is painted
+  if(catDetailTileMap) { catDetailTileMap.destroy(); catDetailTileMap = null; }
+  if(gpsObs.length) {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const canvas = document.getElementById('cat-detail-map');
+      if(!canvas) return;
+      catDetailTileMap = new TileMap(canvas, {
+        onMarkerTap: m => showToast(`📅 ${m.date}${m.location ? ' · ' + m.location : ''}`)
+      });
+      const markers = gpsObs.map((o, i) => {
+        const parts = o.gps.split(',');
+        const lat = parseFloat(parts[0].trim()), lng = parseFloat(parts[1].trim());
+        if(isNaN(lat) || isNaN(lng)) return null;
+        const alpha = Math.max(0.3, 1 - (i / Math.max(gpsObs.length, 1)) * 0.65);
+        return { lat, lng, color: '#f0a500', alpha, size: i === 0 ? 10 : 7,
+                 label: i === 0 ? o.date : null, date: o.date, location: o.location || '' };
+      }).filter(Boolean);
+      catDetailTileMap.setMarkers(markers);
+      catDetailTileMap.fitMarkers(markers, 15);
+    }));
+  }
 }
 
-function closeDetailModal() { document.getElementById('detail-modal').classList.remove('open'); }
+function closeDetailModal() {
+  document.getElementById('detail-modal').classList.remove('open');
+  if(catDetailTileMap) { catDetailTileMap.destroy(); catDetailTileMap = null; }
+}
 function closeDetailIfOutside(e) { if(e.target === document.getElementById('detail-modal')) closeDetailModal(); }
 
 function openHelp() { document.getElementById('help-modal').classList.add('open'); }
@@ -1808,6 +1907,8 @@ function renderColonies() {
       </div>
       <div class="colony-actions">
         <button class="colony-map-btn" onclick="openColonyMapSetup(${idx})">${mapIcon}</button>
+        <button class="colony-map-btn" style="border-color:var(--accent);color:var(--accent)"
+                onclick="openColonyOverviewMap(${idx})">📍 Obs Map</button>
         <button class="colony-delete-btn" onclick="deleteColony(${idx})">🗑 Delete</button>
       </div>
     </div>`;
@@ -2167,6 +2268,113 @@ function showToast(msg) {
   t.classList.add('show');
   if(toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// COLONY OBSERVATION MAP
+// ══════════════════════════════════════════════════════════════════
+function openColonyOverviewMap(colonyIdx) {
+  colonyOverviewMapIdx = colonyIdx;
+  const col = colonies[colonyIdx];
+  if(!col) return;
+  document.getElementById('colony-overview-map-title').textContent = `📍 ${col.name}`;
+
+  // Populate cat filter dropdown
+  const colonyCats = cats.filter(c => c.colony === col.name);
+  const catSel = document.getElementById('col-map-filter-cat');
+  catSel.innerHTML = `<option value="">All cats (${colonyCats.length})</option>` +
+    colonyCats.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+
+  // Reset filters
+  document.getElementById('col-map-filter-status').value = '';
+  document.getElementById('col-map-filter-health').value  = '';
+  document.getElementById('col-map-filter-show').value   = 'latest';
+  document.getElementById('colony-overview-map-popup').style.display = 'none';
+
+  document.getElementById('colony-overview-map-modal').classList.add('open');
+
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if(colonyOverviewMap) { colonyOverviewMap.destroy(); colonyOverviewMap = null; }
+    const canvas = document.getElementById('colony-overview-map-canvas');
+    colonyOverviewMap = new TileMap(canvas, { onMarkerTap: m => showColonyOverviewPopup(m) });
+    if(col.bounds) colonyOverviewMap.fitBounds(col.bounds.sw, col.bounds.ne, 13);
+    renderColonyOverviewMap();
+  }));
+}
+
+function closeColonyOverviewMap() {
+  document.getElementById('colony-overview-map-modal').classList.remove('open');
+  if(colonyOverviewMap) { colonyOverviewMap.destroy(); colonyOverviewMap = null; }
+}
+function closeColonyOverviewIfOutside(e) {
+  if(e.target === document.getElementById('colony-overview-map-modal')) closeColonyOverviewMap();
+}
+
+function renderColonyOverviewMap() {
+  if(colonyOverviewMapIdx === null || !colonyOverviewMap) return;
+  const col = colonies[colonyOverviewMapIdx];
+  if(!col) return;
+
+  const filterCat    = document.getElementById('col-map-filter-cat').value;
+  const filterStatus = document.getElementById('col-map-filter-status').value;
+  const filterHealth = document.getElementById('col-map-filter-health').value;
+  const filterShow   = document.getElementById('col-map-filter-show').value;
+
+  let filtered = cats.filter(c => c.colony === col.name);
+  if(filterCat)    filtered = filtered.filter(c => c.id === filterCat);
+  if(filterStatus === 'fixed')    filtered = filtered.filter(c => derivedStatus(c.id).fixed === 'Yes');
+  if(filterStatus === 'unfixed')  filtered = filtered.filter(c => derivedStatus(c.id).fixed === 'No');
+  if(filterHealth === 'concerns') filtered = filtered.filter(c => {
+    const s = derivedStatus(c.id); return s.health && !s.health.includes('Appears healthy');
+  });
+  if(filterHealth === 'healthy')  filtered = filtered.filter(c => {
+    const s = derivedStatus(c.id); return s.health && s.health.includes('Appears healthy');
+  });
+
+  const markers = [];
+  filtered.forEach(cat => {
+    const catObs = observations
+      .filter(o => o.cat_id === cat.id && o.gps && o.gps.trim())
+      .sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
+    const showObs = filterShow === 'all' ? catObs : catObs.slice(0, 1);
+    const status = derivedStatus(cat.id);
+    const color  = status.fixed === 'Yes' ? '#3fcf6e' : status.fixed === 'No' ? '#e05c5c' : '#f0a500';
+    showObs.forEach(o => {
+      const parts = o.gps.split(',');
+      const lat = parseFloat(parts[0].trim()), lng = parseFloat(parts[1].trim());
+      if(isNaN(lat) || isNaN(lng)) return;
+      markers.push({ lat, lng, color, label: cat.name, catId: cat.id,
+                     date: o.date, location: o.location || '' });
+    });
+  });
+
+  colonyOverviewMap.setMarkers(markers);
+  if(markers.length) colonyOverviewMap.fitMarkers(markers, 13);
+
+  document.getElementById('colony-overview-map-count').textContent =
+    `${markers.length} marker${markers.length !== 1 ? 's' : ''} · ${filtered.length} cat${filtered.length !== 1 ? 's' : ''}`;
+  document.getElementById('colony-overview-map-popup').style.display = 'none';
+}
+
+function showColonyOverviewPopup(m) {
+  const cat = getCatById(m.catId);
+  if(!cat) return;
+  const status = derivedStatus(m.catId);
+  const fixedLabel = status.fixed === 'Yes'
+    ? '<span style="color:#3fcf6e">✓ Fixed</span>'
+    : status.fixed === 'No' ? '<span style="color:#e05c5c">✗ Not Fixed</span>' : '';
+  document.getElementById('colony-overview-map-popup').innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div>
+        <div style="font-weight:700;font-size:0.9rem">${esc(cat.name)}</div>
+        <div style="font-family:var(--mono);font-size:0.6rem;color:var(--muted);margin-top:2px">
+          ${esc(m.date)}${m.location ? ' · ' + esc(m.location) : ''} ${fixedLabel}
+        </div>
+      </div>
+      <button class="btn-sm" style="padding:6px 10px;white-space:nowrap;flex-shrink:0"
+              onclick="closeColonyOverviewMap();openDetailModal('${m.catId}')">View Profile</button>
+    </div>`;
+  document.getElementById('colony-overview-map-popup').style.display = 'block';
 }
 
 // ══════════════════════════════════════════════════════════════════
